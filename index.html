@@ -495,14 +495,18 @@ async function extractArtwork(file) {
   return null;
   }
   
+
 async function addFiles(files) {
   for (const file of files) {
     if (!file.type.startsWith('audio/')) continue;
 
     try {
+      const artwork = await extractArtwork(file);
+
       await addRecord('songs', {
         name: file.name.replace(/\.[^/.]+$/, ''),
         blob: file,
+        artwork: artwork,
         favorite: false
       });
     } catch (error) {
@@ -512,7 +516,8 @@ async function addFiles(files) {
 
   await loadSongs();
   picker.value = '';
-}
+  }
+  
 
 function render() {
   const query = search.value.toLowerCase();
