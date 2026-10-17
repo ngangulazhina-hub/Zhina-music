@@ -1,1 +1,366 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#080b14">
+<title>Zhina Music</title>
+
+<style>
+* { box-sizing: border-box; }
+:root {
+  --bg:#080b14; --panel:#101525; --border:#20283c;
+  --purple:#813cff; --text:#f7f5ff; --muted:#9ba4bd;
+}
+body {
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:Arial,Helvetica,sans-serif;
+}
+button,input { font:inherit; }
+button { cursor:pointer; }
+.app { max-width:1250px; margin:auto; padding:18px; }
+header {
+  display:flex; align-items:center; justify-content:space-between;
+  gap:12px; margin-bottom:24px;
+}
+.logo { font-size:25px; font-weight:800; }
+.logo span { color:var(--purple); }
+.tagline { color:var(--muted); font-size:12px; margin-top:4px; }
+.search {
+  width:45%; padding:13px 16px; border-radius:25px;
+  background:var(--panel); border:1px solid var(--border);
+  color:white; outline:none;
+}
+.layout { display:grid; grid-template-columns:190px 1fr; gap:22px; }
+nav,.panel,.hero,.song,.playlist {
+  background:var(--panel); border:1px solid var(--border);
+  border-radius:16px;
+}
+nav { padding:14px; }
+nav button {
+  display:block; width:100%; text-align:left; padding:13px;
+  margin-bottom:5px; border:0; border-radius:10px;
+  color:var(--muted); background:transparent;
+}
+nav button:hover,nav button.active {
+  color:white; background:#39206c;
+}
+main { min-width:0; }
+.hero {
+  padding:28px; min-height:180px;
+  background:radial-gradient(ellipse at 90% 10%,#49228e,transparent 50%),
+  linear-gradient(135deg,#17132e,#101525);
+  margin-bottom:28px;
+}
+.hero h1 { font-size:clamp(28px,5vw,44px); margin:8px 0; }
+.hero h1 span { color:#bd8bff; }
+.hero p { color:var(--muted); line-height:1.5; }
+.primary {
+  background:var(--purple); color:white; border:0;
+  border-radius:24px; padding:12px 20px; font-weight:bold;
+}
+.section { margin:26px 0; }
+.section-title {
+  display:flex; align-items:center; justify-content:space-between;
+  gap:10px; margin-bottom:14px;
+}
+.section-title h2 { font-size:20px; margin:0; }
+.muted { color:var(--muted); font-size:13px; }
+.grid {
+  display:grid; grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:12px;
+}
+.song,.playlist { padding:10px; min-width:0; }
+.cover {
+  width:100%; aspect-ratio:1; border-radius:10px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:40px; margin-bottom:10px;
+  background:linear-gradient(135deg,#812eff,#151b46);
+  overflow:hidden;
+}
+.cover img { width:100%; height:100%; object-fit:cover; }
+.song-name { font-size:14px; font-weight:bold; overflow-wrap:anywhere; }
+.song-artist { color:var(--muted); font-size:12px; margin-top:6px; }
+.song button.small {
+  border:1px solid var(--border); background:#1b2034;
+  color:white; border-radius:9px; padding:7px; margin-top:9px;
+}
+.player {
+  position:sticky; bottom:8px; z-index:5; margin-top:24px;
+  background:#141729f5; backdrop-filter:blur(14px);
+  border:1px solid #30264c; border-radius:16px;
+  padding:13px; display:flex; align-items:center; gap:12px;
+}
+.now { min-width:0; flex:1; }
+.now strong,.now span { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.now span { color:var(--muted); font-size:12px; margin-top:5px; }
+.controls { display:flex; align-items:center; gap:9px; }
+.controls button {
+  color:white; background:transparent; border:0; padding:7px;
+}
+.controls .play {
+  background:var(--purple); border-radius:50%; width:44px; height:44px;
+}
+.volume { width:80px; accent-color:var(--purple); }
+input[type=file] { display:none; }
+#progress { width:100%; accent-color:var(--purple); }
+.empty { color:var(--muted); padding:18px 0; line-height:1.6; }
+footer { text-align:center; color:var(--muted); font-size:12px; padding:20px; }
+@media(max-width:700px) {
+  .app { padding:12px; }
+  header { flex-wrap:wrap; }
+  .search { width:100%; order:2; }
+  .layout { grid-template-columns:1fr; }
+  nav { display:flex; overflow-x:auto; gap:5px; padding:8px; }
+  nav button { width:auto; white-space:nowrap; margin:0; padding:11px; }
+  .hero { padding:22px; }
+  .grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .player { flex-wrap:wrap; }
+  .now { flex-basis:35%; }
+  .controls { margin-left:auto; }
+  .volume { display:none; }
+}
+</style>
+</head>
+
+<body>
+<div class="app">
+<header>
+  <div>
+    <div class="logo">♫ Zhina <span>Music</span></div>
+    <div class="tagline">Your music, your vibe.</div>
+  </div>
+  <input id="search" class="search" placeholder="⌕  Search your music..." aria-label="Search music">
+</header>
+
+<div class="layout">
+<nav>
+  <button class="active" data-view="Home">⌂ Home</button>
+  <button data-view="Library">♫ Library</button>
+  <button data-view="Playlists">☷ Playlists</button>
+  <button data-view="Equalizer">≋ Equalizer</button>
+  <button id="addNav">＋ Add Music</button>
+</nav>
+
+<main>
+  <section class="hero">
+    <div class="muted">WELCOME TO YOUR SOUNDTRACK</div>
+    <h1>Good Music.<br><span>Better Days.</span></h1>
+    <p>Your music collection, all in one place.</p>
+    <button class="primary" id="explore">▶ Explore Music</button>
+  </section>
+
+  <section class="section" id="librarySection">
+    <div class="section-title">
+      <h2 id="sectionHeading">Your Music</h2>
+      <button class="primary" id="addButton">＋ Add Songs</button>
+    </div>
+    <div id="songs" class="grid"></div>
+    <div id="empty" class="empty">
+      Your library is waiting for its first song. 🎧<br>
+      Tap <b>Add Songs</b> to choose audio files stored on your phone.
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-title"><h2>Your Playlists</h2></div>
+    <div class="grid">
+      <div class="playlist">
+        <div class="cover">💜</div>
+        <div class="song-name">My Favourites</div>
+        <div class="song-artist">Your favourite tracks</div>
+        <button class="small" id="favourites">View favourites</button>
+      </div>
+      <div class="playlist">
+        <div class="cover">🌅</div>
+        <div class="song-name">Chill Vibes</div>
+        <div class="song-artist">Relax and unwind</div>
+        <button class="small" id="chill">View playlist</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="equalizer">
+    <div class="section-title"><h2>Equalizer</h2></div>
+    <div class="panel" style="padding:18px">
+      <p class="muted">Audio enhancement controls will be added in a later version.</p>
+      <label for="preset">Sound preset</label>
+      <select id="preset" style="display:block;margin-top:10px;padding:10px;background:#101525;color:white;border:1px solid #333;border-radius:9px">
+        <option>Normal</option><option>Bass Boost</option>
+        <option>Treble</option><option>Vocal</option>
+      </select>
+    </div>
+  </section>
+</main>
+</div>
+
+<div class="player">
+  <div class="now">
+    <strong id="currentTitle">Nothing playing</strong>
+    <span id="currentArtist">Choose a song from your library</span>
+  </div>
+  <div class="controls">
+    <button id="previous" aria-label="Previous song">⏮</button>
+    <button class="play" id="play" aria-label="Play or pause">▶</button>
+    <button id="next" aria-label="Next song">⏭</button>
+  </div>
+  <input id="volume" class="volume" type="range" min="0" max="1" step="0.05" value="1" aria-label="Volume">
+</div>
+<footer>ZHINA MUSIC · YOUR MUSIC, YOUR VIBE</footer>
+
+<input type="file" id="filePicker" accept="audio/*" multiple>
+<audio id="audio"></audio>
+
+<script>
+const audio = document.getElementById('audio');
+const picker = document.getElementById('filePicker');
+const songsEl = document.getElementById('songs');
+const empty = document.getElementById('empty');
+const search = document.getElementById('search');
+let tracks = [];
+let current = -1;
+let favourites = new Set();
+let chillTracks = new Set();
+
+function addFiles(files) {
+  for (const file of files) {
+    if (!file.type.startsWith('audio/')) continue;
+    tracks.push({
+      name: file.name.replace(/\.[^/.]+$/, ''),
+      file,
+      url: URL.createObjectURL(file)
+    });
+  }
+  render();
+}
+
+function render() {
+  const query = search.value.toLowerCase();
+  const shown = tracks.map((track, index) => ({...track, index}))
+    .filter(track => track.name.toLowerCase().includes(query));
+
+  songsEl.innerHTML = '';
+  empty.style.display = shown.length ? 'none' : 'block';
+
+  shown.forEach(track => {
+    const card = document.createElement('div');
+    card.className = 'song';
+
+    const cover = document.createElement('div');
+    cover.className = 'cover';
+    cover.textContent = '♫';
+
+    const name = document.createElement('div');
+    name.className = 'song-name';
+    name.textContent = track.name;
+
+    const artist = document.createElement('div');
+    artist.className = 'song-artist';
+    artist.textContent = 'Your music';
+
+    const play = document.createElement('button');
+    play.className = 'small';
+    play.textContent = current === track.index && !audio.paused ? 'Ⅱ Playing' : '▶ Play';
+    play.onclick = () => playTrack(track.index);
+
+    const fav = document.createElement('button');
+    fav.className = 'small';
+    fav.textContent = favourites.has(track.index) ? '♥ Saved' : '♡ Favourite';
+    fav.onclick = () => {
+      if (favourites.has(track.index)) favourites.delete(track.index);
+      else favourites.add(track.index);
+      render();
+    };
+
+    card.append(cover, name, artist, play, fav);
+    songsEl.append(card);
+  });
+}
+
+function playTrack(index) {
+  if (!tracks.length) {
+    picker.click();
+    return;
+  }
+  if (index < 0) index = tracks.length - 1;
+  if (index >= tracks.length) index = 0;
+  current = index;
+  audio.src = tracks[current].url;
+  audio.play().then(updatePlayer).catch(() => updatePlayer());
+  updatePlayer();
+  render();
+}
+
+function updatePlayer() {
+  document.getElementById('currentTitle').textContent =
+    current >= 0 ? tracks[current].name : 'Nothing playing';
+  document.getElementById('currentArtist').textContent =
+    current >= 0 ? 'Your music' : 'Choose a song from your library';
+  document.getElementById('play').textContent =
+    !audio.paused && current >= 0 ? 'Ⅱ' : '▶';
+}
+
+document.getElementById('addButton').onclick = () => picker.click();
+document.getElementById('addNav').onclick = () => picker.click();
+picker.onchange = () => addFiles(picker.files);
+search.oninput = render;
+document.getElementById('play').onclick = () => {
+  if (current < 0) {
+    if (tracks.length) playTrack(0);
+    else picker.click();
+  } else if (audio.paused) {
+    audio.play().then(updatePlayer).catch(updatePlayer);
+  } else {
+    audio.pause();
+    updatePlayer();
+  }
+};
+document.getElementById('next').onclick = () => {
+  if (tracks.length) playTrack(current + 1);
+};
+document.getElementById('previous').onclick = () => {
+  if (tracks.length) playTrack(current - 1);
+};
+document.getElementById('volume').oninput = event => {
+  audio.volume = Number(event.target.value);
+};
+audio.onended = () => {
+  if (tracks.length > 1) playTrack(current + 1);
+  else updatePlayer();
+};
+audio.onplay = updatePlayer;
+audio.onpause = updatePlayer;
+
+document.getElementById('explore').onclick = () => {
+  document.getElementById('librarySection').scrollIntoView({behavior:'smooth'});
+  if (!tracks.length) picker.click();
+};
+document.getElementById('favourites').onclick = () => {
+  const first = [...favourites][0];
+  if (first !== undefined) playTrack(first);
+  else alert('Add a song to your favourites first.');
+};
+document.getElementById('chill').onclick = () => {
+  alert('Your Chill Vibes playlist is ready to customise in a future version.');
+};
+document.querySelectorAll('nav button[data-view]').forEach(button => {
+  button.onclick = () => {
+    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    button.classList.add('active');
+    const view = button.dataset.view;
+    document.getElementById('sectionHeading').textContent =
+      view === 'Home' ? 'Your Music' : view;
+    if (view === 'Equalizer') {
+      document.getElementById('equalizer').scrollIntoView({behavior:'smooth'});
+    } else {
+      document.getElementById('librarySection').scrollIntoView({behavior:'smooth'});
+    }
+  };
+});
+
+render();
+</script>
+</body>
+  </html>
+  
