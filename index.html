@@ -212,38 +212,121 @@ footer { text-align:center; color:var(--muted); font-size:12px; padding:20px; }
 <input type="file" id="filePicker" accept="audio/*" multiple>
 <audio id="audio"></audio>
 
+
 <script>
 const audio = document.getElementById('audio');
 const picker = document.getElementById('filePicker');
 const songsEl = document.getElementById('songs');
 const empty = document.getElementById('empty');
 const search = document.getElementById('search');
-let tracks = [];
-let current = -1;
-let favourites = new Set();
-let chillTracks = new Set();
 
-function addFiles(files) {
+let tracks = [];
+let current = null;
+let view = 'Home';
+let db;
+
+const request = indexedDB.open('ZhinaMusicDB', 1);
+
+request.onupgradeneeded = event => {
+  const database = event.target.result;
+  database.createObjectStore('songs', {
+    keyPath: 'id',
+    autoIncrement: true
+  });
+};
+
+request.onsuccess = async event => {
+  db = event.target.result;
+  await loadSongs();
+};
+
+request.onerror = () => {
+  empty.textContent =
+    'Storage could not be opened. Please check your browser settings.';
+};
+
+function storeSong(song) {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction('songs', 'readwrite');
+    const request = transaction.objectStore('songs').add(song);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function getAllSongs() {
+  return new Promise((resolve, reject) => {
+    const request = db.transaction('songs')
+      .objectStore('songs').getAll();
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function updateSong(song) {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction('songs', 'readwrite');
+    transaction.objectStore('songs').put(song);
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+  });
+}
+
+async function loadSongs() {
+  const saved = await getAllSongs();
+
+  tracks.forEach(song => URL.revokeObjectURL(song.url));
+  tracks = saved.map(song => ({
+    ...song,
+    url: URL.createObjectURL(song.blob)
+  }));
+
+  render();
+}
+
+async function addFiles(files) {
   for (const file of files) {
     if (!file.type.startsWith('audio/')) continue;
-    tracks.push({
+
+    const song = {
       name: file.name.replace(/\.[^/.]+$/, ''),
-      file,
-      url: URL.createObjectURL(file)
-    });
+      blob: file,
+      favorite: false
+    };
+
+    try {
+      await storeSong(song);
+    } catch (error) {
+      alert('Could not save ' + song.name +
+        '. Your browser storage may be full.');
+    }
   }
-  render();
+
+  await loadSongs();
+  picker.value = '';
 }
 
 function render() {
   const query = search.value.toLowerCase();
-  const shown = tracks.map((track, index) => ({...track, index}))
-    .filter(track => track.name.toLowerCase().includes(query));
+
+  let shown = tracks.filter(song =>
+    song.name.toLowerCase().includes(query)
+  );
+
+  if (view === 'Favourites') {
+    shown = shown.filter(song => song.favorite);
+  }
 
   songsEl.innerHTML = '';
   empty.style.display = shown.length ? 'none' : 'block';
 
-  shown.forEach(track => {
+  if (!shown.length) {
+    empty.textContent = view === 'Favourites'
+      ? 'No favourites yet. Tap ♡ Favourite on a song to save it here.'
+      : 'Your library is empty. Tap Add Songs to choose music.';
+  }
+
+  shown.forEach(song => {
     const card = document.createElement('div');
     card.className = 'song';
 
@@ -253,24 +336,30 @@ function render() {
 
     const name = document.createElement('div');
     name.className = 'song-name';
-    name.textContent = track.name;
+    name.textContent = song.name;
 
     const artist = document.createElement('div');
     artist.className = 'song-artist';
-    artist.textContent = 'Your music';
+    artist.textContent = 'Saved on this device';
 
     const play = document.createElement('button');
     play.className = 'small';
-    play.textContent = current === track.index && !audio.paused ? 'Ⅱ Playing' : '▶ Play';
-    play.onclick = () => playTrack(track.index);
+    play.textContent =
+      current === song.id && !audio.paused ? 'Ⅱ Playing' : '▶ Play';
+    play.onclick = () => playTrack(song.id);
 
     const fav = document.createElement('button');
     fav.className = 'small';
-    fav.textContent = favourites.has(track.index) ? '♥ Saved' : '♡ Favourite';
-    fav.onclick = () => {
-      if (favourites.has(track.index)) favourites.delete(track.index);
-      else favourites.add(track.index);
-      render();
+    fav.textContent = song.favorite ? '♥ Saved' : '♡ Favourite';
+    fav.onclick = async () => {
+      song.favorite = !song.favorite;
+      await updateSong({
+        id: song.id,
+        name: song.name,
+        blob: song.blob,
+        favorite: song.favorite
+      });
+      await loadSongs();
     };
 
     card.append(cover, name, artist, play, fav);
@@ -278,36 +367,39 @@ function render() {
   });
 }
 
-function playTrack(index) {
-  if (!tracks.length) {
-    picker.click();
-    return;
-  }
-  if (index < 0) index = tracks.length - 1;
-  if (index >= tracks.length) index = 0;
-  current = index;
-  audio.src = tracks[current].url;
-  audio.play().then(updatePlayer).catch(() => updatePlayer());
+function playTrack(id) {
+  const song = tracks.find(item => item.id === id);
+  if (!song) return;
+
+  current = id;
+  audio.src = song.url;
+  audio.play().catch(() => updatePlayer());
   updatePlayer();
   render();
 }
 
 function updatePlayer() {
+  const song = tracks.find(item => item.id === current);
+
   document.getElementById('currentTitle').textContent =
-    current >= 0 ? tracks[current].name : 'Nothing playing';
+    song ? song.name : 'Nothing playing';
+
   document.getElementById('currentArtist').textContent =
-    current >= 0 ? 'Your music' : 'Choose a song from your library';
+    song ? 'Your music' : 'Choose a song from your library';
+
   document.getElementById('play').textContent =
-    !audio.paused && current >= 0 ? 'Ⅱ' : '▶';
+    song && !audio.paused ? 'Ⅱ' : '▶';
 }
 
 document.getElementById('addButton').onclick = () => picker.click();
 document.getElementById('addNav').onclick = () => picker.click();
+
 picker.onchange = () => addFiles(picker.files);
 search.oninput = render;
+
 document.getElementById('play').onclick = () => {
-  if (current < 0) {
-    if (tracks.length) playTrack(0);
+  if (current === null) {
+    if (tracks.length) playTrack(tracks[0].id);
     else picker.click();
   } else if (audio.paused) {
     audio.play().then(updatePlayer).catch(updatePlayer);
@@ -316,51 +408,80 @@ document.getElementById('play').onclick = () => {
     updatePlayer();
   }
 };
-document.getElementById('next').onclick = () => {
-  if (tracks.length) playTrack(current + 1);
-};
-document.getElementById('previous').onclick = () => {
-  if (tracks.length) playTrack(current - 1);
-};
+
+function playRelative(direction) {
+  if (!tracks.length) return;
+
+  let index = tracks.findIndex(song => song.id === current);
+  if (index < 0) index = 0;
+  else index = (index + direction + tracks.length) % tracks.length;
+
+  playTrack(tracks[index].id);
+}
+
+document.getElementById('next').onclick = () => playRelative(1);
+document.getElementById('previous').onclick = () => playRelative(-1);
+
 document.getElementById('volume').oninput = event => {
   audio.volume = Number(event.target.value);
 };
-audio.onended = () => {
-  if (tracks.length > 1) playTrack(current + 1);
-  else updatePlayer();
-};
+
+audio.onended = () => playRelative(1);
 audio.onplay = updatePlayer;
 audio.onpause = updatePlayer;
 
 document.getElementById('explore').onclick = () => {
-  document.getElementById('librarySection').scrollIntoView({behavior:'smooth'});
+  document.getElementById('librarySection')
+    .scrollIntoView({ behavior: 'smooth' });
   if (!tracks.length) picker.click();
 };
+
 document.getElementById('favourites').onclick = () => {
-  const first = [...favourites][0];
-  if (first !== undefined) playTrack(first);
-  else alert('Add a song to your favourites first.');
+  view = 'Favourites';
+  document.getElementById('sectionHeading').textContent = 'My Favourites';
+  render();
+  document.getElementById('librarySection')
+    .scrollIntoView({ behavior: 'smooth' });
 };
+
 document.getElementById('chill').onclick = () => {
-  alert('Your Chill Vibes playlist is ready to customise in a future version.');
+  alert('Custom playlists are coming in a future update.');
 };
+
 document.querySelectorAll('nav button[data-view]').forEach(button => {
   button.onclick = () => {
-    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('nav button')
+      .forEach(item => item.classList.remove('active'));
     button.classList.add('active');
-    const view = button.dataset.view;
-    document.getElementById('sectionHeading').textContent =
-      view === 'Home' ? 'Your Music' : view;
-    if (view === 'Equalizer') {
-      document.getElementById('equalizer').scrollIntoView({behavior:'smooth'});
-    } else {
-      document.getElementById('librarySection').scrollIntoView({behavior:'smooth'});
+
+    view = button.dataset.view === 'Library' ? 'Library' : 'Home';
+
+    if (button.dataset.view === 'Playlists') {
+      document.getElementById('sectionHeading').textContent = 'Your Playlists';
+      document.querySelector('.playlist')?.scrollIntoView({
+        behavior: 'smooth'
+      });
+      return;
     }
+
+    if (button.dataset.view === 'Equalizer') {
+      document.getElementById('equalizer')
+        .scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+
+    document.getElementById('sectionHeading').textContent =
+      button.dataset.view === 'Home' ? 'Your Music' : 'Music Library';
+
+    render();
+    document.getElementById('librarySection')
+      .scrollIntoView({ behavior: 'smooth' });
   };
 });
 
 render();
 </script>
+  
 </body>
   </html>
   
