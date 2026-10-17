@@ -500,6 +500,44 @@ function playTrack(id) {
   render();
 }
 
+function formatTime(seconds) {
+  if (!Number.isFinite(seconds)) return '0:00';
+
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+
+  return mins + ':' + String(secs).padStart(2, '0');
+}
+
+const progress = document.getElementById('progress');
+const currentTimeEl = document.getElementById('currentTime');
+const durationEl = document.getElementById('duration');
+
+audio.ontimeupdate = () => {
+  currentTimeEl.textContent = formatTime(audio.currentTime);
+
+  if (Number.isFinite(audio.duration) && audio.duration > 0) {
+    durationEl.textContent = formatTime(audio.duration);
+    progress.value = Math.round(
+      (audio.currentTime / audio.duration) * 1000
+    );
+  } else {
+    durationEl.textContent = '0:00';
+    progress.value = 0;
+  }
+};
+
+audio.onloadedmetadata = () => {
+  durationEl.textContent = formatTime(audio.duration);
+};
+
+progress.oninput = () => {
+  if (Number.isFinite(audio.duration) && audio.duration > 0) {
+    audio.currentTime =
+      (Number(progress.value) / 1000) * audio.duration;
+  }
+};
+  
 function updatePlayer() {
   const song = tracks.find(item => item.id === current);
 
