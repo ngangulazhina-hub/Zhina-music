@@ -587,16 +587,34 @@ function render() {
   });
 }
 
+
 function playTrack(id) {
   const song = tracks.find(item => item.id === id);
   if (!song) return;
 
   current = id;
   audio.src = song.url;
+
+  const albumArt = document.getElementById('albumArt');
+
+  if (song.artwork) {
+    const imageUrl = URL.createObjectURL(song.artwork);
+    albumArt.innerHTML = '';
+
+    const image = document.createElement('img');
+    image.src = imageUrl;
+    image.alt = 'Album artwork';
+
+    albumArt.appendChild(image);
+  } else {
+    albumArt.textContent = '♫';
+  }
+
   audio.play().catch(() => updatePlayer());
   updatePlayer();
   render();
-}
+  }
+  
 
 function formatTime(seconds) {
   if (!Number.isFinite(seconds)) return '0:00';
