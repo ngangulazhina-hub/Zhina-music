@@ -151,17 +151,18 @@ footer { text-align:center; color:var(--muted); font-size:12px; padding:20px; }
     <button class="primary" id="explore">▶ Explore Music</button>
   </section>
 
-  <section class="section" id="librarySection">
-    <div class="section-title">
-      <h2 id="sectionHeading">Your Music</h2>
-      <button class="primary" id="addButton">＋ Add Songs</button>
-    </div>
-    <div id="songs" class="grid"></div>
-    <div id="empty" class="empty">
-      Your library is waiting for its first song. 🎧<br>
-      Tap <b>Add Songs</b> to choose audio files stored on your phone.
-    </div>
-  </section>
+  
+<section class="section" id="playlistSection">
+  <div class="section-title">
+    <h2>Your Playlists</h2>
+    <button class="primary" id="createPlaylist">＋ New Playlist</button>
+  </div>
+  <div id="playlists" class="grid"></div>
+  <div id="playlistEmpty" class="empty">
+    No playlists yet. Create your first playlist!
+  </div>
+</section>
+  
 
   <section class="section">
     <div class="section-title"><h2>Your Playlists</h2></div>
@@ -213,6 +214,7 @@ footer { text-align:center; color:var(--muted); font-size:12px; padding:20px; }
 <audio id="audio"></audio>
 
 
+
 <script>
 const audio = document.getElementById('audio');
 const picker = document.getElementById('filePicker');
@@ -223,59 +225,85 @@ const search = document.getElementById('search');
 let tracks = [];
 let current = null;
 let view = 'Home';
+let activePlaylist = null;
+let queue = [];
+let queuePosition = -1;
 let db;
 
-const request = indexedDB.open('ZhinaMusicDB', 1);
+const request = indexedDB.open('ZhinaMusicDB', 2);
 
 request.onupgradeneeded = event => {
   const database = event.target.result;
-  database.createObjectStore('songs', {
-    keyPath: 'id',
-    autoIncrement: true
-  });
+
+  if (!database.objectStoreNames.contains('songs')) {
+    database.createObjectStore('songs', {
+      keyPath: 'id',
+      autoIncrement: true
+    });
+  }
+
+  if (!database.objectStoreNames.contains('playlists')) {
+    database.createObjectStore('playlists', {
+      keyPath: 'id',
+      autoIncrement: true
+    });
+  }
 };
 
 request.onsuccess = async event => {
   db = event.target.result;
   await loadSongs();
+  await renderPlaylists();
 };
 
 request.onerror = () => {
-  empty.textContent =
-    'Storage could not be opened. Please check your browser settings.';
+  alert('Could not open music storage. Check your browser settings.');
 };
 
-function storeSong(song) {
+function transactionStore(name, mode = 'readonly') {
+  return db.transaction(name, mode).objectStore(name);
+}
+
+function getAll(name) {
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction('songs', 'readwrite');
-    const request = transaction.objectStore('songs').add(song);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    const req = transactionStore(name).getAll();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
   });
 }
 
-function getAllSongs() {
+function addRecord(name, record) {
   return new Promise((resolve, reject) => {
-    const request = db.transaction('songs')
-      .objectStore('songs').getAll();
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    const tx = db.transaction(name, 'readwrite');
+    const req = tx.objectStore(name).add(record);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
   });
 }
 
-function updateSong(song) {
+function saveRecord(name, record) {
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction('songs', 'readwrite');
-    transaction.objectStore('songs').put(song);
-    transaction.oncomplete = resolve;
-    transaction.onerror = () => reject(transaction.error);
+    const tx = db.transaction(name, 'readwrite');
+    tx.objectStore(name).put(record);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+function deleteRecord(name, id) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(name, 'readwrite');
+    tx.objectStore(name).delete(id);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
   });
 }
 
 async function loadSongs() {
-  const saved = await getAllSongs();
+  const saved = await getAll('songs');
 
   tracks.forEach(song => URL.revokeObjectURL(song.url));
+
   tracks = saved.map(song => ({
     ...song,
     url: URL.createObjectURL(song.blob)
@@ -288,17 +316,14 @@ async function addFiles(files) {
   for (const file of files) {
     if (!file.type.startsWith('audio/')) continue;
 
-    const song = {
-      name: file.name.replace(/\.[^/.]+$/, ''),
-      blob: file,
-      favorite: false
-    };
-
     try {
-      await storeSong(song);
+      await addRecord('songs', {
+        name: file.name.replace(/\.[^/.]+$/, ''),
+        blob: file,
+        favorite: false
+      });
     } catch (error) {
-      alert('Could not save ' + song.name +
-        '. Your browser storage may be full.');
+      alert('Could not save this song. Browser storage may be full.');
     }
   }
 
@@ -317,13 +342,19 @@ function render() {
     shown = shown.filter(song => song.favorite);
   }
 
+  if (view === 'Playlist' && activePlaylist) {
+    shown = shown.filter(song => activePlaylist.songIds.includes(song.id));
+  }
+
   songsEl.innerHTML = '';
   empty.style.display = shown.length ? 'none' : 'block';
 
   if (!shown.length) {
     empty.textContent = view === 'Favourites'
-      ? 'No favourites yet. Tap ♡ Favourite on a song to save it here.'
-      : 'Your library is empty. Tap Add Songs to choose music.';
+      ? 'No favourites yet. Tap ♡ Favourite to save a song.'
+      : view === 'Playlist'
+        ? 'This playlist is empty. Use Add Songs on its playlist card.'
+        : 'Your library is empty. Tap Add Songs to choose music.';
   }
 
   shown.forEach(song => {
@@ -351,9 +382,10 @@ function render() {
     const fav = document.createElement('button');
     fav.className = 'small';
     fav.textContent = song.favorite ? '♥ Saved' : '♡ Favourite';
+
     fav.onclick = async () => {
       song.favorite = !song.favorite;
-      await updateSong({
+      await saveRecord('songs', {
         id: song.id,
         name: song.name,
         blob: song.blob,
@@ -391,6 +423,239 @@ function updatePlayer() {
     song && !audio.paused ? 'Ⅱ' : '▶';
 }
 
+async function renderPlaylists() {
+  if (!db) return;
+
+  const playlists = await getAll('playlists');
+  const container = document.getElementById('playlists');
+  const message = document.getElementById('playlistEmpty');
+
+  container.innerHTML = '';
+  message.style.display = playlists.length ? 'none' : 'block';
+
+  playlists.forEach(playlist => {
+    const card = document.createElement('div');
+    card.className = 'playlist';
+
+    const cover = document.createElement('div');
+    cover.className = 'cover';
+    cover.textContent = '♫';
+
+    const name = document.createElement('div');
+    name.className = 'song-name';
+    name.textContent = playlist.name;
+
+    const count = document.createElement('div');
+    count.className = 'song-artist';
+    const validIds = playlist.songIds.filter(id =>
+      tracks.some(song => song.id === id)
+    );
+    count.textContent = validIds.length + ' song(s)';
+
+    const open = document.createElement('button');
+    open.className = 'small';
+    open.textContent = 'View songs';
+    open.onclick = () => {
+      activePlaylist = playlist;
+      view = 'Playlist';
+      document.getElementById('sectionHeading').textContent =
+        playlist.name;
+      render();
+      document.getElementById('librarySection')
+        .scrollIntoView({ behavior: 'smooth' });
+    };
+
+    const add = document.createElement('button');
+    add.className = 'small';
+    add.textContent = '＋ Add songs';
+    add.onclick = () => addSongsToPlaylist(playlist);
+
+    const play = document.createElement('button');
+    play.className = 'small';
+    play.textContent = '▶ Play playlist';
+    play.onclick = () => playPlaylist(playlist);
+
+    const remove = document.createElement('button');
+    remove.className = 'small';
+    remove.textContent = 'Remove songs';
+    remove.onclick = () => removeSongsFromPlaylist(playlist);
+
+    const rename = document.createElement('button');
+    rename.className = 'small';
+    rename.textContent = 'Rename';
+    rename.onclick = () => renamePlaylist(playlist);
+
+    const deleteButton = document.createElement('button');
+    deleteButton.className = 'small';
+    deleteButton.textContent = 'Delete playlist';
+    deleteButton.onclick = () => deletePlaylist(playlist);
+
+    card.append(cover, name, count, open, add, play,
+      remove, rename, deleteButton);
+    container.append(card);
+  });
+}
+
+async function createPlaylist() {
+  const name = prompt('Enter a name for your new playlist:');
+  if (!name || !name.trim()) return;
+
+  try {
+    await addRecord('playlists', {
+      name: name.trim(),
+      songIds: []
+    });
+    await renderPlaylists();
+  } catch (error) {
+    alert('Could not create playlist.');
+  }
+}
+
+async function addSongsToPlaylist(playlist) {
+  if (!tracks.length) {
+    alert('Add music to your library first.');
+    picker.click();
+    return;
+  }
+
+  const list = tracks.map((song, index) =>
+    (index + 1) + '. ' + song.name
+  ).join('\n');
+
+  const answer = prompt(
+    'Add songs to "' + playlist.name + '".\n' +
+    'Enter song numbers separated by commas.\n\n' + list
+  );
+
+  if (!answer) return;
+
+  const numbers = answer.split(',')
+    .map(value => Number(value.trim()))
+    .filter(number => Number.isInteger(number) &&
+      number >= 1 && number <= tracks.length);
+
+  const ids = [...new Set([
+    ...playlist.songIds,
+    ...numbers.map(number => tracks[number - 1].id)
+  ])];
+
+  playlist.songIds = ids;
+
+  try {
+    await saveRecord('playlists', playlist);
+    await renderPlaylists();
+    alert('Songs added to "' + playlist.name + '".');
+  } catch (error) {
+    alert('Could not update this playlist.');
+  }
+}
+
+async function removeSongsFromPlaylist(playlist) {
+  const songs = tracks.filter(song =>
+    playlist.songIds.includes(song.id)
+  );
+
+  if (!songs.length) {
+    alert('This playlist has no songs to remove.');
+    return;
+  }
+
+  const list = songs.map((song, index) =>
+    (index + 1) + '. ' + song.name
+  ).join('\n');
+
+  const answer = prompt(
+    'Enter the song number(s) to remove, separated by commas:\n\n' +
+    list
+  );
+
+  if (!answer) return;
+
+  const numbers = answer.split(',')
+    .map(value => Number(value.trim()))
+    .filter(number => Number.isInteger(number) &&
+      number >= 1 && number <= songs.length);
+
+  const idsToRemove = numbers.map(number => songs[number - 1].id);
+  playlist.songIds = playlist.songIds.filter(id =>
+    !idsToRemove.includes(id)
+  );
+
+  await saveRecord('playlists', playlist);
+
+  if (activePlaylist && activePlaylist.id === playlist.id) {
+    activePlaylist = playlist;
+    render();
+  }
+
+  await renderPlaylists();
+}
+
+async function renamePlaylist(playlist) {
+  const name = prompt('Enter the new playlist name:', playlist.name);
+  if (!name || !name.trim()) return;
+
+  playlist.name = name.trim();
+  await saveRecord('playlists', playlist);
+  await renderPlaylists();
+
+  if (activePlaylist && activePlaylist.id === playlist.id) {
+    activePlaylist = playlist;
+    document.getElementById('sectionHeading').textContent = playlist.name;
+  }
+}
+
+async function deletePlaylist(playlist) {
+  if (!confirm('Delete playlist "' + playlist.name +
+      '"? The songs themselves will stay in your library.')) return;
+
+  await deleteRecord('playlists', playlist.id);
+
+  if (activePlaylist && activePlaylist.id === playlist.id) {
+    activePlaylist = null;
+    view = 'Home';
+  }
+
+  await renderPlaylists();
+  render();
+}
+
+function playPlaylist(playlist) {
+  const songs = playlist.songIds
+    .map(id => tracks.find(song => song.id === id))
+    .filter(Boolean);
+
+  if (!songs.length) {
+    alert('This playlist is empty. Add some songs first.');
+    return;
+  }
+
+  queue = songs.map(song => song.id);
+  queuePosition = 0;
+  playTrack(queue[queuePosition]);
+}
+
+function playRelative(direction) {
+  if (queue.length) {
+    queuePosition += direction;
+
+    if (queuePosition >= queue.length) queuePosition = 0;
+    if (queuePosition < 0) queuePosition = queue.length - 1;
+
+    playTrack(queue[queuePosition]);
+    return;
+  }
+
+  if (!tracks.length) return;
+
+  let index = tracks.findIndex(song => song.id === current);
+  if (index < 0) index = 0;
+  else index = (index + direction + tracks.length) % tracks.length;
+
+  playTrack(tracks[index].id);
+}
+
+document.getElementById('createPlaylist').onclick = createPlaylist;
 document.getElementById('addButton').onclick = () => picker.click();
 document.getElementById('addNav').onclick = () => picker.click();
 
@@ -409,16 +674,6 @@ document.getElementById('play').onclick = () => {
   }
 };
 
-function playRelative(direction) {
-  if (!tracks.length) return;
-
-  let index = tracks.findIndex(song => song.id === current);
-  if (index < 0) index = 0;
-  else index = (index + direction + tracks.length) % tracks.length;
-
-  playTrack(tracks[index].id);
-}
-
 document.getElementById('next').onclick = () => playRelative(1);
 document.getElementById('previous').onclick = () => playRelative(-1);
 
@@ -436,42 +691,31 @@ document.getElementById('explore').onclick = () => {
   if (!tracks.length) picker.click();
 };
 
-document.getElementById('favourites').onclick = () => {
-  view = 'Favourites';
-  document.getElementById('sectionHeading').textContent = 'My Favourites';
-  render();
-  document.getElementById('librarySection')
-    .scrollIntoView({ behavior: 'smooth' });
-};
-
-document.getElementById('chill').onclick = () => {
-  alert('Custom playlists are coming in a future update.');
-};
-
 document.querySelectorAll('nav button[data-view]').forEach(button => {
   button.onclick = () => {
     document.querySelectorAll('nav button')
       .forEach(item => item.classList.remove('active'));
+
     button.classList.add('active');
+    const target = button.dataset.view;
 
-    view = button.dataset.view === 'Library' ? 'Library' : 'Home';
-
-    if (button.dataset.view === 'Playlists') {
-      document.getElementById('sectionHeading').textContent = 'Your Playlists';
-      document.querySelector('.playlist')?.scrollIntoView({
-        behavior: 'smooth'
-      });
+    if (target === 'Playlists') {
+      document.getElementById('playlistSection')
+        .scrollIntoView({ behavior: 'smooth' });
       return;
     }
 
-    if (button.dataset.view === 'Equalizer') {
+    if (target === 'Equalizer') {
       document.getElementById('equalizer')
         .scrollIntoView({ behavior: 'smooth' });
       return;
     }
 
+    view = target === 'Library' ? 'Library' : 'Home';
+    activePlaylist = null;
+
     document.getElementById('sectionHeading').textContent =
-      button.dataset.view === 'Home' ? 'Your Music' : 'Music Library';
+      target === 'Home' ? 'Your Music' : 'Music Library';
 
     render();
     document.getElementById('librarySection')
