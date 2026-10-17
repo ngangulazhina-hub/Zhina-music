@@ -269,18 +269,35 @@ footer { text-align:center; color:var(--muted); font-size:12px; padding:20px; }
 </main>
 </div>
 
+
 <div class="player">
-  <div class="now">
-    <strong id="currentTitle">Nothing playing</strong>
-    <span id="currentArtist">Choose a song from your library</span>
+  <div class="player-top">
+    <div class="album-art" id="albumArt">♫</div>
+
+    <div class="now">
+      <strong id="currentTitle">Nothing playing</strong>
+      <span id="currentArtist">Choose a song from your library</span>
+    </div>
+
+    <div class="controls">
+      <button id="previous" aria-label="Previous song">⏮</button>
+      <button class="play" id="play" aria-label="Play or pause">▶</button>
+      <button id="next" aria-label="Next song">⏭</button>
+    </div>
+
+    <input id="volume" class="volume" type="range"
+      min="0" max="1" step="0.05" value="1"
+      aria-label="Volume">
   </div>
-  <div class="controls">
-    <button id="previous" aria-label="Previous song">⏮</button>
-    <button class="play" id="play" aria-label="Play or pause">▶</button>
-    <button id="next" aria-label="Next song">⏭</button>
+
+  <div class="progress-area">
+    <span id="currentTime">0:00</span>
+    <input id="progress" type="range" min="0" max="1000"
+      step="1" value="0" aria-label="Song progress">
+    <span id="duration">0:00</span>
   </div>
-  <input id="volume" class="volume" type="range" min="0" max="1" step="0.05" value="1" aria-label="Volume">
 </div>
+  
 <footer>ZHINA MUSIC · YOUR MUSIC, YOUR VIBE</footer>
 
 <input type="file" id="filePicker" accept="audio/*" multiple>
